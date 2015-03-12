@@ -66,7 +66,7 @@ import org.slf4j.LoggerFactory;
  * The appropriate logger is chosen according to the following algorithm:
  * <ol>
  *     <li>if an exception has been thrown: use {@link #ERROR_LOGGER};</li>
- *     <li>otherwise, if the reported latency is greater than {@link #getSlowQueryLatencyThresholdMillis()} the configured threshold in milliseconds}: use {@link #SLOW_LOGGER};</li>
+ *     <li>otherwise, if the reported latency is greater than {@link #getSlowQueryLatencyThresholdMillis() the configured threshold in milliseconds}: use {@link #SLOW_LOGGER};</li>
  *     <li>otherwise, use {@link #NORMAL_LOGGER}.</li>
  * </ol>
  *
