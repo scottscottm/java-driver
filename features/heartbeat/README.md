@@ -13,17 +13,21 @@ it.
 This feature is enabled by default. The default heartbeat interval is 30
 seconds, it can be customized through `PoolingOptions`:
 
-    cluster.getConfiguration().getPoolingOptions()
-        .setHeartbeatIntervalSeconds(60);
+```java
+cluster.getConfiguration().getPoolingOptions()
+    .setHeartbeatIntervalSeconds(60);
+```
 
 This can be changed at runtime, but only connections created after that
 will use the new interval. Most users will want to do this at startup:
 
-    Cluster cluster = Cluster.builder()
-        .addContactPoint("127.0.0.1")
-        .withPoolingOptions(new PoolingOptions()
-            .setHeartbeatIntervalSeconds(60))
-        .build();
+```java
+Cluster cluster = Cluster.builder()
+    .addContactPoint("127.0.0.1")
+    .withPoolingOptions(new PoolingOptions()
+        .setHeartbeatIntervalSeconds(60))
+    .build();
+```
 
 The heartbeat interval should be set higher than
 [SocketOptions.readTimeoutMillis](http://www.datastax.com/drivers/java/2.1/com/datastax/driver/core/SocketOptions.html#getReadTimeoutMillis()):

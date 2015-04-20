@@ -15,16 +15,18 @@ go through a router).
 This interface allows you to deal with such cases, by transforming the address sent by a
 Cassandra node to another address to be used by the driver for connection.
 
-    public class MyAddressTranslater implements AddressTranslater {
-        public InetSocketAddress translate(InetSocketAddress address) {
-            ... // your custom translation logic
-        }
+```java
+public class MyAddressTranslater implements AddressTranslater {
+    public InetSocketAddress translate(InetSocketAddress address) {
+        ... // your custom translation logic
     }
+}
 
-    Cluster cluster = Cluster.builder()
-        .addContactPoint("1.2.3.4")
-        .withAddressTranslater(new MyAddressTranslater())
-        .build();
+Cluster cluster = Cluster.builder()
+    .addContactPoint("1.2.3.4")
+    .withAddressTranslater(new MyAddressTranslater())
+    .build();
+```
 
 Notes:
 
@@ -48,10 +50,12 @@ regions:
 
 To use this implementation, provide an instance when initializing the `Cluster`:
 
-    Cluster cluster = Cluster.builder()
-        .addContactPoint("1.2.3.4")
-        .withAddressTranslater(new EC2MultiRegionAddressTranslater())
-        .build();
+```java
+Cluster cluster = Cluster.builder()
+    .addContactPoint("1.2.3.4")
+    .withAddressTranslater(new EC2MultiRegionAddressTranslater())
+    .build();
+```
 
 This class performs a reverse DNS lookup of the origin address, to find the domain name of the
 target instance. Then it performs a forward DNS lookup of the domain name; the EC2 DNS does the
