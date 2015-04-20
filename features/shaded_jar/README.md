@@ -24,32 +24,3 @@ package name:
   </exclusions>
 </dependency>
 ```
-
-If you also use the mapper, you need to remove its dependency to the
-non-shaded JAR:
-
-```xml
-<dependency>
-  <groupId>com.datastax.cassandra</groupId>
-  <artifactId>cassandra-driver-core</artifactId>
-  <version>2.0.10</version>
-  <classifier>shaded</classifier>
-  <exclusions>
-    <exclusion>
-      <groupId>io.netty</groupId>
-      <artifactId>*</artifactId>
-    </exclusion>
-  </exclusions>
-</dependency>
-<dependency>
-  <groupId>com.datastax.cassandra</groupId>
-  <artifactId>cassandra-driver-mapping</artifactId>
-  <version>2.0.10</version>
-  <exclusions>
-    <exclusion>
-      <groupId>com.datastax.cassandra</groupId>
-      <artifactId>cassandra-driver-core</artifactId>
-    </exclusion>
-  </exclusions>
-</dependency>
-```
