@@ -120,7 +120,11 @@ public class PerHostPercentileTracker implements LatencyTracker {
     private Recorder getRecorder(Host host) {
         Recorder recorder = recorders.get(host);
         if (recorder == null) {
-            recorder = recorders.putIfAbsent(host, new Recorder(highestTrackableLatencyMillis, numberOfSignificantValueDigits));
+            recorder = new Recorder(highestTrackableLatencyMillis, numberOfSignificantValueDigits);
+            Recorder old = recorders.putIfAbsent(host, recorder);
+            if (old != null) {
+                recorder = old;
+            }
             // Also set an empty cache entry to remember the time we started recording:
             cachedHistograms.putIfAbsent(host, CachedHistogram.empty());
         }
