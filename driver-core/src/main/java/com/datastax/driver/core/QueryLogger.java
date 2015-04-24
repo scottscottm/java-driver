@@ -24,6 +24,8 @@ import com.google.common.annotations.VisibleForTesting;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.datastax.driver.core.policies.PerHostPercentileTracker;
+
 /**
  * A configurable {@link LatencyTracker} that logs all executed statements.
  * <p>
@@ -83,10 +85,16 @@ import org.slf4j.LoggerFactory;
 public class QueryLogger implements LatencyTracker {
 
     /**
-     * The default threshold in milliseconds beyond which queries are considered 'slow'
+     * The default latency threshold in milliseconds beyond which queries are considered 'slow'
      * and logged as such by the driver.
      */
     public static final long DEFAULT_SLOW_QUERY_THRESHOLD_MS = 5000;
+
+    /**
+     * The default latency percentile beyond which queries are considered 'slow'
+     * and logged as such by the driver.
+     */
+    public static final double DEFAULT_SLOW_QUERY_THRESHOLD_PERCENTILE = 99.0;
 
     /**
      * The default maximum length of a CQL query string that can be logged verbatim
@@ -152,7 +160,9 @@ public class QueryLogger implements LatencyTracker {
 
     private static final String NORMAL_TEMPLATE = "[%s] [%s] Query completed normally, took %s ms: %s";
 
-    private static final String SLOW_TEMPLATE = "[%s] [%s] Query too slow, took %s ms: %s";
+    private static final String SLOW_TEMPLATE_MILLIS = "[%s] [%s] Query too slow, took %s ms: %s";
+
+    private static final String SLOW_TEMPLATE_PERCENTILE = "[%s] [%s] Query too slow, took %s ms (%s percentile = %s ms): %s";
 
     private static final String ERROR_TEMPLATE = "[%s] [%s] Query error after %s ms: %s";
 
@@ -163,6 +173,10 @@ public class QueryLogger implements LatencyTracker {
     static final String FURTHER_PARAMS_OMITTED = " [further parameters omitted]";
 
     private final Cluster cluster;
+
+    private volatile PerHostPercentileTracker perHostPercentileLatencyTracker = null;
+
+    private volatile double slowQueryLatencyThresholdPercentile = DEFAULT_SLOW_QUERY_THRESHOLD_PERCENTILE;
 
     private volatile long slowQueryLatencyThresholdMillis = DEFAULT_SLOW_QUERY_THRESHOLD_MS;
 
@@ -207,9 +221,33 @@ public class QueryLogger implements LatencyTracker {
         }
 
         /**
+         * Set the {@link PerHostPercentileTracker} instance to use.
+         * <p>
+         * Setting this will turn on percentile-based tracking of slow queries,
+         * in which case you should also provide {@link #withSlowQueryLatencyThresholdPercentile(double) a threshold percentile}.
+         * <p>
+         * If you set this to {@code null}, or don't set it at all, the logger will instead use a constant latency threshold
+         * to track slow queries, in which case you should set the appropriate
+         * {@link #withSlowQueryLatencyThresholdMillis(long) threshold in milliseconds}.
+         * <p>
+         * The default for this setting is {@code null}, which means that the logger will use a constant latency threshold
+         * to track slow queries.
+         *
+         * @param percentileLatencyTracker the {@link PerHostPercentileTracker} instance to use.
+         * @return this {@link Builder} instance (for method chaining).
+         */
+        public Builder withPerHostPercentileLatencyTracker(PerHostPercentileTracker percentileLatencyTracker) {
+            instance.setPerHostPercentileLatencyTracker(percentileLatencyTracker);
+            return this;
+        }
+
+        /**
          * Set the threshold in milliseconds beyond which queries are considered 'slow'
          * and logged as such by the driver.
          * The default for this setting is {@link #DEFAULT_SLOW_QUERY_THRESHOLD_MS}.
+         * Note that this setting will only be effective if
+         * {@link #withPerHostPercentileLatencyTracker(PerHostPercentileTracker) percentile-based tracking
+         * of slow queries} is turned off.
          *
          * @param slowQueryLatencyThresholdMillis Slow queries threshold in milliseconds.
          *                                        It must be strictly positive.
@@ -218,6 +256,24 @@ public class QueryLogger implements LatencyTracker {
          */
         public Builder withSlowQueryLatencyThresholdMillis(long slowQueryLatencyThresholdMillis) {
             instance.setSlowQueryLatencyThresholdMillis(slowQueryLatencyThresholdMillis);
+            return this;
+        }
+
+        /**
+         * Set the threshold percentile beyond which queries are considered 'slow'
+         * and logged as such by the driver.
+         * The default for this setting is {@link #DEFAULT_SLOW_QUERY_THRESHOLD_PERCENTILE}.
+         * Note that this setting will only be effective if you turn on
+         * {@link #withPerHostPercentileLatencyTracker(PerHostPercentileTracker) percentile-based tracking
+         * of slow queries}.
+         *
+         * @param slowQueryLatencyThresholdPercentile Slow queries threshold percentile.
+         *                                        It must be comprised between 0 inclusive and 100 exclusive.
+         * @return this {@link Builder} instance (for method chaining).
+         * @throws IllegalArgumentException if {@code slowQueryLatencyThresholdPercentile < 0 || slowQueryLatencyThresholdPercentile >= 100}.
+         */
+        public Builder withSlowQueryLatencyThresholdPercentile(double slowQueryLatencyThresholdPercentile) {
+            instance.setSlowQueryLatencyThresholdPercentile(slowQueryLatencyThresholdPercentile);
             return this;
         }
 
@@ -285,6 +341,31 @@ public class QueryLogger implements LatencyTracker {
     // Getters and Setters
 
     /**
+     * Return the {@link PerHostPercentileTracker} instance to use.
+     * @return the {@link PerHostPercentileTracker} instance to use.
+     */
+    public PerHostPercentileTracker getPerHostPercentileLatencyTracker() {
+        return perHostPercentileLatencyTracker;
+    }
+
+    /**
+     * Set the {@link PerHostPercentileTracker} instance to use.
+     * <p>
+     * Setting this will turn on percentile-based tracking of slow queries,
+     * in which case you should also provide {@link #setSlowQueryLatencyThresholdPercentile(double) a threshold percentile}.
+     * <p>
+     * If you set this to {@code null}, or don't set it at all, the logger will instead use a constant latency threshold
+     * to track slow queries, in which case you should set the appropriate
+     * {@link #setSlowQueryLatencyThresholdMillis(long) threshold in milliseconds}.
+     *
+     * @param perHostPercentileLatencyTracker the {@link PerHostPercentileTracker} instance to use.
+     */
+    public void setPerHostPercentileLatencyTracker(PerHostPercentileTracker perHostPercentileLatencyTracker) {
+        this.perHostPercentileLatencyTracker = perHostPercentileLatencyTracker;
+    }
+
+
+    /**
      * Return the threshold in milliseconds beyond which queries are considered 'slow'
      * and logged as such by the driver.
      * The default for this setting is {@link #DEFAULT_SLOW_QUERY_THRESHOLD_MS}.
@@ -299,6 +380,9 @@ public class QueryLogger implements LatencyTracker {
     /**
      * Set the threshold in milliseconds beyond which queries are considered 'slow'
      * and logged as such by the driver.
+     * Note that this setting will only be effective if
+     * {@link #setPerHostPercentileLatencyTracker(PerHostPercentileTracker) percentile-based tracking
+     * of slow queries} is turned off.
      *
      * @param slowQueryLatencyThresholdMillis Slow queries threshold in milliseconds.
      *                                        It must be strictly positive.
@@ -308,6 +392,34 @@ public class QueryLogger implements LatencyTracker {
         if (slowQueryLatencyThresholdMillis <= 0)
             throw new IllegalArgumentException("Invalid slowQueryLatencyThresholdMillis, should be > 0, got " + slowQueryLatencyThresholdMillis);
         this.slowQueryLatencyThresholdMillis = slowQueryLatencyThresholdMillis;
+    }
+
+    /**
+     * Return the threshold percentile beyond which queries are considered 'slow'
+     * and logged as such by the driver.
+     *
+     * @return threshold percentile beyond which queries are considered 'slow'
+     * and logged as such by the driver.
+     */
+    public double getSlowQueryLatencyThresholdPercentile() {
+        return slowQueryLatencyThresholdPercentile;
+    }
+
+    /**
+     * Set the threshold percentile beyond which queries are considered 'slow'
+     * and logged as such by the driver.
+     * Note that this setting will only be effective if
+     * {@link #setPerHostPercentileLatencyTracker(PerHostPercentileTracker) percentile-based tracking
+     * of slow queries} is turned on.
+     *
+     * @param slowQueryLatencyThresholdPercentile Slow queries threshold percentile.
+     *                                        It must be comprised between 0 inclusive and 100 exclusive.
+     * @throws IllegalArgumentException if {@code slowQueryLatencyThresholdPercentile < 0 || slowQueryLatencyThresholdPercentile >= 100}.
+     */
+    public void setSlowQueryLatencyThresholdPercentile(double slowQueryLatencyThresholdPercentile) {
+        if (slowQueryLatencyThresholdPercentile < 0.0 || slowQueryLatencyThresholdPercentile >= 100.0)
+            throw new IllegalArgumentException("Invalid slowQueryLatencyThresholdPercentile, should be >= 0 and < 100, got " + slowQueryLatencyThresholdPercentile);
+        this.slowQueryLatencyThresholdPercentile = slowQueryLatencyThresholdPercentile;
     }
 
     /**
@@ -407,47 +519,77 @@ public class QueryLogger implements LatencyTracker {
      */
     @Override
     public void update(Host host, Statement statement, Exception exception, long newLatencyNanos) {
-        Logger logger;
-        String template;
         long latencyMs = NANOSECONDS.toMillis(newLatencyNanos);
         if (exception == null) {
-            if (latencyMs > slowQueryLatencyThresholdMillis) {
-                logger = SLOW_LOGGER;
-                template = SLOW_TEMPLATE;
+            long threshold;
+            PerHostPercentileTracker percentileLatencyTracker = this.perHostPercentileLatencyTracker;
+            if(percentileLatencyTracker != null) {
+                threshold = percentileLatencyTracker.getLatencyAtPercentile(host, slowQueryLatencyThresholdPercentile);
+                if (threshold >= 0 && latencyMs > threshold) {
+                    maybeLogSlowQueryPercentile(host, statement, threshold, latencyMs);
+                } else {
+                    maybeLogNormalQuery(host, statement, latencyMs);
+                }
             } else {
-                logger = NORMAL_LOGGER;
-                template = NORMAL_TEMPLATE;
+                if (latencyMs > slowQueryLatencyThresholdMillis) {
+                    maybeLogSlowQueryMillis(host, statement, latencyMs);
+                } else {
+                    maybeLogNormalQuery(host, statement, latencyMs);
+                }
             }
         } else {
-            logger = ERROR_LOGGER;
-            template = ERROR_TEMPLATE;
+            maybeLogErrorQuery(host, statement, exception, latencyMs);
         }
-        logQuery(host, statement, exception, latencyMs, logger, template);
     }
 
-    private void logQuery(Host host, Statement statement, Exception exception, long latencyMs, Logger logger, String template) {
-        if (logger.isDebugEnabled()) {
-            String message = String.format(template, cluster.getClusterName(), host, latencyMs, statementAsString(statement));
-            boolean showParameterValues = logger.isTraceEnabled();
-            if (showParameterValues) {
-                StringBuilder params = new StringBuilder();
-                if (statement instanceof BoundStatement) {
-                    appendParameters((BoundStatement)statement, params, maxLoggedParameters);
-                } else if (statement instanceof BatchStatement) {
-                    BatchStatement batchStatement = (BatchStatement)statement;
-                    int remaining = maxLoggedParameters;
-                    for (Statement inner : batchStatement.getStatements()) {
-                        if (inner instanceof BoundStatement) {
-                            remaining = appendParameters((BoundStatement)inner, params, remaining);
-                        }
+    private void maybeLogNormalQuery(Host host, Statement statement, long latencyMs) {
+        if(NORMAL_LOGGER.isDebugEnabled()) {
+            String message = String.format(NORMAL_TEMPLATE, cluster.getClusterName(), host, latencyMs, statementAsString(statement));
+            logQuery(statement, null, NORMAL_LOGGER, message);
+        }
+    }
+
+    private void maybeLogSlowQueryMillis(Host host, Statement statement, long latencyMs) {
+        if(SLOW_LOGGER.isDebugEnabled()) {
+            String message = String.format(SLOW_TEMPLATE_MILLIS, cluster.getClusterName(), host, latencyMs, statementAsString(statement));
+            logQuery(statement, null, SLOW_LOGGER, message);
+        }
+    }
+
+    private void maybeLogSlowQueryPercentile(Host host, Statement statement, long threshold, long latencyMs) {
+        if(SLOW_LOGGER.isDebugEnabled()) {
+            String message = String.format(SLOW_TEMPLATE_PERCENTILE, cluster.getClusterName(), host, latencyMs, slowQueryLatencyThresholdPercentile, threshold, statementAsString(statement));
+            logQuery(statement, null, SLOW_LOGGER, message);
+        }
+    }
+
+    private void maybeLogErrorQuery(Host host, Statement statement, Exception exception, long latencyMs) {
+        if(ERROR_LOGGER.isDebugEnabled()) {
+            String message = String.format(ERROR_TEMPLATE, cluster.getClusterName(), host, latencyMs, statementAsString(statement));
+            logQuery(statement, exception, ERROR_LOGGER, message);
+        }
+    }
+
+    private void logQuery(Statement statement, Exception exception, Logger logger, String message) {
+        boolean showParameterValues = logger.isTraceEnabled();
+        if (showParameterValues) {
+            StringBuilder params = new StringBuilder();
+            if (statement instanceof BoundStatement) {
+                appendParameters((BoundStatement)statement, params, maxLoggedParameters);
+            } else if (statement instanceof BatchStatement) {
+                BatchStatement batchStatement = (BatchStatement)statement;
+                int remaining = maxLoggedParameters;
+                for (Statement inner : batchStatement.getStatements()) {
+                    if (inner instanceof BoundStatement) {
+                        remaining = appendParameters((BoundStatement)inner, params, remaining);
                     }
                 }
-                if (params.length() > 0)
-                    params.append("]");
-                logger.trace(message + params, exception);
-            } else {
-                logger.debug(message, exception);
             }
+            if (params.length() > 0)
+                params.append("]");
+            logger.trace(message + params, exception);
+        } else {
+            logger.debug(message, exception);
         }
     }
 
