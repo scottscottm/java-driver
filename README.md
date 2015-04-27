@@ -1,5 +1,7 @@
 # Datastax Java Driver for Apache Cassandra
 
+![Travis Build](https://travis-ci.org/datastax/java-driver.svg?branch=2.0)
+
 *If you're reading this on github.com, please note that this is the readme
 for the development version and that some features described here might
 not yet have been released. You can find the documentation for latest
@@ -7,8 +9,6 @@ version through [Java driver
 docs](http://datastax.github.io/java-driver/) or via the release tags,
 [e.g.
 2.0.10](https://github.com/datastax/java-driver/tree/2.0.10).*
-
-![Travis Build](https://travis-ci.org/datastax/java-driver.svg?branch=2.0)
 
 A modern, feature-rich and highly tunable Java client library for Apache
 Cassandra (1.2+) and DataStax Enterprise (3.1+) using exclusively
