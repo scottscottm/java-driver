@@ -10,9 +10,9 @@ docs](http://datastax.github.io/java-driver/) or via the release tags,
 [e.g.
 2.0.10](https://github.com/datastax/java-driver/tree/2.0.10).*
 
-A modern, feature-rich and highly tunable Java client library for Apache
-Cassandra (1.2+) and DataStax Enterprise (3.1+) using exclusively
-Cassandra's binary protocol and Cassandra Query Language v3.
+A modern, [feature-rich](features/) and highly tunable Java client
+library for Apache Cassandra (1.2+) and DataStax Enterprise (3.1+) using
+exclusively Cassandra's binary protocol and Cassandra Query Language v3.
 
 Features:
 
